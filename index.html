@@ -14,6 +14,7 @@
            --accent:#E08A6B; --accent-soft:#2B2422; --card:#232120; --ok:#7FAE8C; --warn:#C9A05A; }
   }
   *{box-sizing:border-box}
+  [hidden]{display:none !important}
   body{
     margin:0;padding:36px 20px 72px;background:var(--bg);color:var(--fg);
     font-family:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;font-size:15px;line-height:1.65;
@@ -31,15 +32,23 @@
   .dot{width:8px;height:8px;background:var(--muted);margin-top:7px;flex:0 0 auto}
   .banner.ok .dot{background:var(--ok)}
   .banner.warn .dot{background:var(--warn)}
+  .banner-body{display:flex;flex-direction:column;gap:8px;min-width:0}
+  .banner-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .addr{
+    font-family:Consolas,"Courier New",monospace;font-size:12px;color:var(--muted);
+    word-break:break-all;min-width:0;
+  }
   .grid{display:grid;gap:12px}
-  a.card{
+  .card{
     display:block;position:relative;text-decoration:none;color:inherit;background:var(--card);
     border:1px solid var(--line);padding:16px 18px 16px 22px;
   }
-  a.card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--line-strong)}
+  .card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--line-strong)}
   a.card:hover{background:var(--accent-soft);border-color:var(--line-strong)}
   a.card:hover::before{background:var(--accent)}
-  .top{display:flex;align-items:baseline;gap:10px}
+  .card.primary{background:var(--accent-soft);border-color:var(--line-strong)}
+  .card.primary::before{background:var(--accent)}
+  .top{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
   .name{font-family:Georgia,"Songti SC",serif;font-size:18px}
   .badge{
     font-size:11px;letter-spacing:.04em;color:var(--accent);background:var(--accent-soft);
@@ -50,6 +59,19 @@
   a.card:hover .arrow{color:var(--accent);transform:translateX(3px)}
   .desc{margin:6px 0 4px;color:var(--muted);font-size:13px}
   .url{font-family:Consolas,"Courier New",monospace;font-size:12px;color:var(--muted);word-break:break-all}
+  .btn{
+    display:inline-block;max-width:100%;margin-top:10px;padding:9px 16px;
+    background:var(--accent);color:#FFFFFF;border:0;text-align:center;
+    font-family:inherit;font-size:14px;font-weight:600;line-height:1.4;
+    text-decoration:none;cursor:pointer;word-break:break-all;
+  }
+  .btn:hover{opacity:.9}
+  .btn:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+  .btn.small{
+    margin-top:0;padding:5px 10px;background:transparent;color:var(--accent);
+    border:1px solid var(--line-strong);font-size:12px;font-weight:500;
+  }
+  .btn.small:hover{background:var(--accent-soft);opacity:1}
   footer{margin-top:34px;color:var(--muted);font-size:12px;border-top:1px solid var(--line);padding-top:14px}
 </style>
 </head>
@@ -58,12 +80,28 @@
   <h1>个人服务入口</h1>
   <div class="sub">web.521096.xyz · 所有服务只提供 IPv6 直连</div>
 
-  <div class="banner" id="banner">
+  <div class="banner" id="banner" role="status" aria-live="polite">
     <span class="dot"></span>
-    <span id="bannerText">正在检测当前网络的 IPv6 连通性…</span>
+    <div class="banner-body">
+      <span id="bannerText">正在检测当前网络的 IPv6 连通性…</span>
+      <div class="banner-actions" id="bannerActions" hidden>
+        <code class="addr" id="pageUrl"></code>
+        <button type="button" class="btn small" id="copyBtn">复制本页地址</button>
+      </div>
+    </div>
   </div>
 
   <div class="grid">
+    <div class="card primary">
+      <div class="top">
+        <span class="name">本机入口</span>
+        <span class="badge">HTTP 直连</span>
+      </div>
+      <p class="desc">本机 nginx 入口页，HTTP 直连。</p>
+      <div class="url">http://web.521096.xyz:8180/</div>
+      <a class="btn" href="http://web.521096.xyz:8180/">打开本机入口 →</a>
+    </div>
+
     <a class="card" href="https://web.521096.xyz:8443/">
       <div class="top">
         <span class="name">知识库</span>
@@ -117,7 +155,8 @@
 
   <footer>
     本页由 GitHub Pages 托管，只做入口跳转；实际服务运行在本机，仅通过 IPv6 提供。<br>
-    自制证书首次访问会提示“连接不是私密连接”，选择继续前往即可。
+    8443 / 9943 / 9450 使用自制证书，首次访问会提示“连接不是私密连接”，选择继续前往即可。<br>
+    8180 是本机 nginx 的 HTTP 入口，不受自签证书影响。
   </footer>
 </main>
 
@@ -125,32 +164,97 @@
 (function () {
   var banner = document.getElementById("banner");
   var text = document.getElementById("bannerText");
-  var done = false;
+  var actions = document.getElementById("bannerActions");
+  var copyBtn = document.getElementById("copyBtn");
+  var pageUrl = document.getElementById("pageUrl");
+  var state = "pending";
 
-  function show(ok) {
-    if (done) return;
-    done = true;
-    banner.classList.add(ok ? "ok" : "warn");
-    text.textContent = ok
-      ? "已检测到 IPv6，下面各入口可以直接打开。"
-      : "当前网络没有 IPv6：本页可以打开，但下面各入口需要 IPv6 才能访问。请改用支持 IPv6 的网络（多数手机流量支持）。";
+  if (pageUrl) pageUrl.textContent = location.href;
+
+  function hasIPv6() {
+    if (state !== "pending") return;
+    state = "ok";
+    banner.classList.add("ok");
+    text.textContent = "已检测到 IPv6，下面各入口可以直接打开。";
   }
 
-  var ctrl = new AbortController();
-  var timer = setTimeout(function () { ctrl.abort(); show(false); }, 4000);
+  function noIPv6() {
+    if (state !== "pending") return;
+    state = "no";
+    banner.classList.add("warn");
+    text.textContent = "当前网络没有 IPv6：本页可以打开，但下面各入口需要 IPv6 才能访问。用手机流量打开本页通常可用。";
+    if (actions) actions.hidden = false;
+  }
 
-  fetch("https://api64.ipify.org?format=json", { signal: ctrl.signal, cache: "no-store" })
-    .then(function (r) { return r.json(); })
-    .then(function (j) {
+  function probeFailed() {
+    if (state !== "pending") return;
+    state = "fail";
+    banner.classList.add("warn");
+    text.textContent = "IPv6 探测服务不可达（两个检测点均无响应），无法判断当前网络；若入口打不开，请确认网络支持 IPv6。";
+  }
+
+  function probe(url, read) {
+    var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 4000);
+    var opts = { cache: "no-store" };
+    if (ctrl) opts.signal = ctrl.signal;
+    return fetch(url, opts).then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return read(r);
+    }).then(function (value) {
       clearTimeout(timer);
-      show(typeof j.ip === "string" && j.ip.indexOf(":") !== -1);
-    })
-    .catch(function () {
+      return value;
+    }, function (err) {
       clearTimeout(timer);
-      // 探测服务不可用时不做判断，按可达处理，避免误吓用户
-      done = true;
-      text.textContent = "未能完成 IPv6 探测（探测服务不可达），若入口打不开请确认网络支持 IPv6。";
+      throw err;
     });
+  }
+
+  probe("https://api64.ipify.org?format=json", function (r) { return r.json(); })
+    .then(function (json) {
+      if (json && typeof json.ip === "string" && json.ip.indexOf(":") !== -1) {
+        hasIPv6();
+        return null;
+      }
+      return probe("https://ipv6.icanhazip.com", function (r) { return r.text(); })
+        .then(function (addr) {
+          if (addr && addr.indexOf(":") !== -1) hasIPv6();
+          else noIPv6();
+        }, function () {
+          noIPv6();
+        });
+    }, function () {
+      return probe("https://ipv6.icanhazip.com", function (r) { return r.text(); })
+        .then(function (addr) {
+          if (addr && addr.indexOf(":") !== -1) hasIPv6();
+          else probeFailed();
+        }, function () {
+          probeFailed();
+        });
+    });
+
+  if (copyBtn) {
+    copyBtn.addEventListener("click", function () {
+      var url = location.href;
+
+      function selectFallback() {
+        if (!pageUrl || !window.getSelection) return;
+        var range = document.createRange();
+        range.selectNodeContents(pageUrl);
+        var sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(function () {
+          copyBtn.textContent = "已复制";
+        }, selectFallback);
+      } else {
+        selectFallback();
+      }
+    });
+  }
 })();
 </script>
 </body>
